@@ -1,0 +1,5 @@
+on: { push: { branches: [develop] } }
+jobs:
+  demo:
+    uses: Aver005/aaaver-app/.github/workflows/site-release.yml@master
+    permissions: { contents: write }
