@@ -17,7 +17,7 @@ export default function Menubar() {
       initial={{ y: -40, opacity: 0 }}
       animate={{ y: 0, opacity: 1 }}
       transition={{ duration: 0.5 }}
-      className="fixed inset-x-0 top-0 z-50 border-b border-line bg-panel/90 backdrop-blur"
+      className="fixed inset-x-0 top-0 z-50 border-b border-line bg-panel/90 backdrop-blur-sm"
     >
       <div className="mx-auto flex h-11 max-w-7xl items-center gap-1 px-3 text-sm">
         <a

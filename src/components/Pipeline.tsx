@@ -1,5 +1,10 @@
-import { useEffect, useState } from 'react'
-import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
+import { memo, useEffect, useRef, useState } from 'react'
+import {
+  AnimatePresence,
+  motion,
+  useInView,
+  useReducedMotion,
+} from 'motion/react'
 import { useTranslation } from 'react-i18next'
 import SectionTitle from './SectionTitle'
 
@@ -71,20 +76,23 @@ export default function Pipeline() {
   const logs = t('pipeline.logs', { returnObjects: true })
   const reduced = useReducedMotion()
   const [i, setI] = useState(reduced ? STATES.length - 1 : 0)
+  const ref = useRef<HTMLElement>(null)
+  const inView = useInView(ref, { margin: '-15% 0px' })
 
   useEffect(() => {
-    if (reduced) return
+    // Advance the cache walkthrough only while it's on screen.
+    if (reduced || !inView) return
     const id = window.setTimeout(
       () => setI((v) => (v + 1) % STATES.length),
       STATES[i].hold,
     )
     return () => clearTimeout(id)
-  }, [i, reduced])
+  }, [i, reduced, inView])
 
   const s = STATES[i]
 
   return (
-    <section id="pipeline" className="px-4 py-24">
+    <section id="pipeline" ref={ref} className="px-4 py-24">
       <div className="mx-auto max-w-5xl">
         <SectionTitle
           index="04"
@@ -93,68 +101,9 @@ export default function Pipeline() {
           sub={t('pipeline.sub')}
         />
 
-        {/* the node graph */}
-        <div className="mt-14 overflow-x-auto pb-2">
-          <div className="flex min-w-max items-stretch gap-0">
-            {NODES.map((n, idx) => {
-              const k = s.kind(idx)
-              const hash = hashFor(n, k, i)
-              return (
-                <div key={n} className="flex items-center">
-                  <motion.div
-                    className="w-28 rounded-lg border p-3"
-                    animate={{
-                      backgroundColor: BG[k],
-                      borderColor: BORDER[k],
-                    }}
-                    transition={{ duration: 0.35, delay: idx * 0.03 }}
-                  >
-                    <div className="flex items-center justify-between">
-                      <span className="font-mono text-[13px] font-bold text-fg">
-                        {n}
-                      </span>
-                      <motion.span
-                        className="size-2 rounded-full"
-                        animate={{ backgroundColor: DOT[k] }}
-                        transition={{ duration: 0.3 }}
-                      />
-                    </div>
-                    <p className="mt-2 font-mono text-[10px] text-dim">
-                      #{hash}
-                    </p>
-                    <p
-                      className="mt-0.5 font-mono text-[9px]"
-                      style={{ color: k === 'hit' ? '#4fd08a' : '#767683' }}
-                    >
-                      {k === 'compute'
-                        ? 'recompute'
-                        : k === 'hit'
-                          ? 'cache hit'
-                          : k === 'stale'
-                            ? 'stale'
-                            : 'idle'}
-                    </p>
-                  </motion.div>
-                  {idx < NODES.length - 1 && (
-                    <motion.span
-                      className="px-1 text-lg"
-                      animate={{
-                        color:
-                          s.kind(idx + 1) === 'compute' ||
-                          s.kind(idx + 1) === 'stale'
-                            ? '#f2a93b'
-                            : '#3a3a44',
-                      }}
-                      transition={{ duration: 0.3 }}
-                    >
-                      →
-                    </motion.span>
-                  )}
-                </div>
-              )
-            })}
-          </div>
-        </div>
+        {/* the node graph — memoized on state index so it doesn't re-render
+            while the badge/log below cross-fade through AnimatePresence */}
+        <NodeGraph i={i} />
 
         {/* state readout */}
         <div className="mt-10 flex flex-col items-start gap-5">
@@ -199,6 +148,71 @@ export default function Pipeline() {
     </section>
   )
 }
+
+const NodeGraph = memo(function NodeGraph({ i }: { i: number }) {
+  const s = STATES[i]
+  return (
+    <div className="mt-14 overflow-x-auto pb-2">
+      <div className="flex min-w-max items-stretch gap-0">
+        {NODES.map((n, idx) => {
+          const k = s.kind(idx)
+          const hash = hashFor(n, k, i)
+          return (
+            <div key={n} className="flex items-center">
+              <motion.div
+                className="w-28 rounded-lg border p-3"
+                animate={{
+                  backgroundColor: BG[k],
+                  borderColor: BORDER[k],
+                }}
+                transition={{ duration: 0.35, delay: idx * 0.03 }}
+              >
+                <div className="flex items-center justify-between">
+                  <span className="font-mono text-[13px] font-bold text-fg">
+                    {n}
+                  </span>
+                  <motion.span
+                    className="size-2 rounded-full"
+                    animate={{ backgroundColor: DOT[k] }}
+                    transition={{ duration: 0.3 }}
+                  />
+                </div>
+                <p className="mt-2 font-mono text-[10px] text-dim">#{hash}</p>
+                <p
+                  className="mt-0.5 font-mono text-[9px]"
+                  style={{ color: k === 'hit' ? '#4fd08a' : '#767683' }}
+                >
+                  {k === 'compute'
+                    ? 'recompute'
+                    : k === 'hit'
+                      ? 'cache hit'
+                      : k === 'stale'
+                        ? 'stale'
+                        : 'idle'}
+                </p>
+              </motion.div>
+              {idx < NODES.length - 1 && (
+                <motion.span
+                  className="px-1 text-lg"
+                  animate={{
+                    color:
+                      s.kind(idx + 1) === 'compute' ||
+                      s.kind(idx + 1) === 'stale'
+                        ? '#f2a93b'
+                        : '#3a3a44',
+                  }}
+                  transition={{ duration: 0.3 }}
+                >
+                  →
+                </motion.span>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+})
 
 // stable-ish short hash per node/state so cached nodes keep their key and
 // recomputed ones visibly change

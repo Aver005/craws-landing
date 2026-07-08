@@ -210,6 +210,38 @@ body {
   border-right: 1.5px solid;
 }
 
+/* These layers animate `transform` forever (drift/scan) over a heavy
+   `blur()`. Promoting them to their own compositor layer means the blurred
+   texture is rasterized once and only translated/scaled after — instead of
+   the browser re-painting a 700px blur every frame. Scoped to just these
+   few elements: `will-change` is not free and shouldn't be sprayed widely. */
+.animate-drift,
+.animate-drift-slow,
+.animate-scan {
+  will-change: transform;
+}
+
+/* Editor canvas: a tile flashes amber once where the content-hash misses.
+   A plain-div CSS animation, replayed by remounting the grid — far cheaper
+   than 48 Motion components per phase. */
+@keyframes tile-flash {
+  from {
+    opacity: 0.5;
+  }
+  to {
+    opacity: 0;
+  }
+}
+.tile-flash {
+  animation: tile-flash 0.6s ease-out forwards;
+}
+
+/* Histogram bars ease to their new height on each grade — a CSS transition
+   instead of one Motion value per bar. */
+.hist-bar {
+  transition: height 0.4s ease;
+}
+
 @media (prefers-reduced-motion: reduce) {
   html {
     scroll-behavior: auto;
@@ -218,5 +250,13 @@ body {
   .animate-drift-slow,
   .animate-scan {
     animation: none;
+    will-change: auto;
+  }
+  .tile-flash {
+    animation: none;
+    opacity: 0;
+  }
+  .hist-bar {
+    transition: none;
   }
 }

@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { motion, useReducedMotion } from 'motion/react'
+import { memo, useEffect, useMemo, useRef, useState } from 'react'
+import { motion, useInView, useReducedMotion } from 'motion/react'
 import sampleUrl from '../assets/sample.webp'
 
 /* The centerpiece: craws' own editor, turned into a webpage. A real photo on
@@ -189,22 +189,27 @@ export default function Editor() {
   const [phase, setPhase] = useState(reduced ? LAST : 0)
   const timer = useRef<number>(undefined)
   const bins = useHistogram(sampleUrl)
+  const rootRef = useRef<HTMLDivElement>(null)
+  // Only run the phase script while the editor is actually on screen — no point
+  // burning the main thread re-grading a canvas the reader has scrolled past.
+  const inView = useInView(rootRef, { margin: '120px' })
 
   useEffect(() => {
-    if (reduced) return
+    if (reduced || !inView) return
     const p = PHASES[phase]
     timer.current = window.setTimeout(
       () => setPhase((v) => (v + 1) % PHASES.length),
       phase === LAST ? p.hold + RESTART_MS : p.hold,
     )
     return () => clearTimeout(timer.current)
-  }, [phase, reduced])
+  }, [phase, reduced, inView])
 
   const p = PHASES[phase]
-  const flash = new Set(p.recompute)
+  const flash = useMemo(() => new Set(p.recompute), [p])
 
   return (
     <motion.div
+      ref={rootRef}
       initial={{ opacity: 0, y: 40, scale: 0.98 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{ duration: 0.7, delay: 0.4, ease: [0.22, 1, 0.36, 1] }}
@@ -249,9 +254,15 @@ export default function Editor() {
 
 /* ---------- canvas ---------- */
 
-function Canvas({ p, flash }: { p: Phase; flash: Set<number> }) {
+const Canvas = memo(function Canvas({
+  p,
+  flash,
+}: {
+  p: Phase
+  flash: Set<number>
+}) {
   return (
-    <div className="checker relative aspect-[4/3] w-full overflow-hidden rounded-md border border-line">
+    <div className="checker relative aspect-4/3 w-full overflow-hidden rounded-md border border-line">
       <motion.img
         src={sampleUrl}
         alt="craws sample — a warm café portrait"
@@ -285,8 +296,11 @@ function Canvas({ p, flash }: { p: Phase; flash: Set<number> }) {
         />
       </motion.svg>
 
-      {/* tile grid — flashes amber only where the content-hash misses */}
+      {/* tile grid — flashes amber only where the content-hash misses. One
+         keyed container of plain divs replays a CSS animation once per phase,
+         instead of mounting 48 Motion components on every step. */}
       <div
+        key={`${p.op}-${p.time}`}
         className="pointer-events-none absolute inset-0 grid"
         style={{
           gridTemplateColumns: `repeat(${COLS}, 1fr)`,
@@ -295,17 +309,12 @@ function Canvas({ p, flash }: { p: Phase; flash: Set<number> }) {
       >
         {ALL.map((i) => (
           <div key={i} className="border-[0.5px] border-white/5">
-            <motion.div
-              key={`${p.op}-${p.time}-${i}`}
-              className="h-full w-full bg-accent"
-              initial={{ opacity: flash.has(i) ? 0.5 : 0 }}
-              animate={{ opacity: 0 }}
-              transition={{
-                duration: 0.6,
-                ease: 'easeOut',
-                delay: (i % COLS) * 0.015,
-              }}
-            />
+            {flash.has(i) && (
+              <div
+                className="tile-flash h-full w-full bg-accent"
+                style={{ animationDelay: `${(i % COLS) * 15}ms` }}
+              />
+            )}
           </div>
         ))}
       </div>
@@ -319,7 +328,7 @@ function Canvas({ p, flash }: { p: Phase; flash: Set<number> }) {
       />
 
       {/* HUD */}
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center justify-between gap-2 bg-gradient-to-t from-black/70 to-transparent px-2.5 py-1.5 font-mono text-[10px]">
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center justify-between gap-2 bg-linear-to-t from-black/70 to-transparent px-2.5 py-1.5 font-mono text-[10px]">
         <span className="text-accent-soft">{p.op}</span>
         <span className={p.cached ? 'text-ok' : 'text-dim'}>
           {p.cached
@@ -329,11 +338,11 @@ function Canvas({ p, flash }: { p: Phase; flash: Set<number> }) {
       </div>
     </div>
   )
-}
+})
 
 /* ---------- tool rail ---------- */
 
-function ToolRail({ active }: { active: string }) {
+const ToolRail = memo(function ToolRail({ active }: { active: string }) {
   return (
     <div className="flex shrink-0 flex-col gap-1 border-r border-line bg-panel-hi p-1.5">
       {TOOLS.map((tl) => {
@@ -354,11 +363,11 @@ function ToolRail({ active }: { active: string }) {
       })}
     </div>
   )
-}
+})
 
 /* ---------- node strip ---------- */
 
-function NodeStrip({ phase }: { phase: number }) {
+const NodeStrip = memo(function NodeStrip({ phase }: { phase: number }) {
   const active = PHASES[phase].node
   return (
     <div className="flex items-center gap-1 overflow-x-auto border-b border-line bg-panel-deep px-3 py-2 font-mono text-[10px]">
@@ -389,11 +398,11 @@ function NodeStrip({ phase }: { phase: number }) {
       })}
     </div>
   )
-}
+})
 
 /* ---------- inspector ---------- */
 
-function Inspector({ p }: { p: Phase }) {
+const Inspector = memo(function Inspector({ p }: { p: Phase }) {
   return (
     <div className="shrink-0 border-t border-line bg-panel-hi p-3 font-mono text-[11px] md:w-56 md:border-t-0 md:border-l">
       <p className="mb-3 flex items-center justify-between text-dim">
@@ -460,7 +469,7 @@ function Inspector({ p }: { p: Phase }) {
       )}
     </div>
   )
-}
+})
 
 function Rows({ rows }: { rows: [string, string][] }) {
   return (
@@ -513,7 +522,7 @@ function ExposureCtrl({ stops }: { stops: number }) {
 
 /* ---------- histogram ---------- */
 
-function Histogram({
+const Histogram = memo(function Histogram({
   bins,
   brightness,
   gray,
@@ -539,16 +548,16 @@ function Histogram({
     <div className="flex items-end gap-3 border-t border-line bg-panel-deep px-3 py-2">
       <div className="flex h-12 flex-1 items-end gap-px">
         {(shown ?? new Array(48).fill(0)).map((h, i) => (
-          <motion.span
+          <span
             key={i}
-            className="min-w-0 flex-1 rounded-t-[1px]"
+            className="hist-bar min-w-0 flex-1 rounded-t-[1px]"
             style={{
+              height: `${Math.max(2, h * 100)}%`,
+              transitionDelay: `${i * 4}ms`,
               background: gray
                 ? '#a6a6b2'
                 : 'linear-gradient(to top, #d0821f, #f9ce86)',
             }}
-            animate={{ height: `${Math.max(2, h * 100)}%` }}
-            transition={{ duration: 0.4, delay: i * 0.004 }}
           />
         ))}
       </div>
@@ -558,7 +567,7 @@ function Histogram({
       </div>
     </div>
   )
-}
+})
 
 // Compute a real luminance histogram from the sample's pixels.
 function useHistogram(url: string): number[] | null {

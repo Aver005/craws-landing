@@ -1,5 +1,10 @@
-import { useEffect, useState } from 'react'
-import { AnimatePresence, motion, useReducedMotion } from 'motion/react'
+import { useEffect, useRef, useState } from 'react'
+import {
+  AnimatePresence,
+  motion,
+  useInView,
+  useReducedMotion,
+} from 'motion/react'
 import { useTranslation } from 'react-i18next'
 import SectionTitle from './SectionTitle'
 import { rise, viewportOnce } from '../lib/anim'
@@ -27,18 +32,21 @@ export default function Ops() {
   const reduced = useReducedMotion()
   const [sel, setSel] = useState(0)
   const [auto, setAuto] = useState(!reduced)
+  const ref = useRef<HTMLElement>(null)
+  const inView = useInView(ref, { margin: '-15% 0px' })
 
   useEffect(() => {
-    if (!auto) return
+    // Only cycle while the section is on screen (and not paused by hover).
+    if (!auto || !inView) return
     const id = window.setTimeout(() => setSel((v) => (v + 1) % OPS.length), HOLD)
     return () => clearTimeout(id)
-  }, [sel, auto])
+  }, [sel, auto, inView])
 
   const op = OPS[sel]
   const card = cards[sel]
 
   return (
-    <section id="ops" className="px-4 py-24">
+    <section id="ops" ref={ref} className="px-4 py-24">
       <div className="mx-auto max-w-6xl">
         <SectionTitle
           index="03"
@@ -92,7 +100,7 @@ export default function Ops() {
 
           {/* the inspector */}
           <div
-            className="relative min-h-[19rem] overflow-hidden rounded-lg border border-line bg-panel-deep p-6"
+            className="relative min-h-76 overflow-hidden rounded-lg border border-line bg-panel-deep p-6"
             onMouseEnter={() => setAuto(false)}
             onMouseLeave={() => setAuto(!reduced)}
           >
